@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Dokotela - direct-pay doctor booking for South Africa
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  PaystackSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+  FrontendUrl:
+    Type: String
+    Default: "http://localhost:8080"
+    Description: Cloudflare Pages URL, no trailing slash
+  AllowedOrigin:
+    Type: String
+    Default: "*"
+  AdminEmails:
+    Type: String
+    Default: ""
+    Description: Comma separated emails allowed to verify doctors
+  DevTopup:
+    Type: String
+    Default: "0"
+    Description: Set to 1 only for testing - lets users credit their own wallet
+  CommissionPct:
+    Type: String
+    Default: "10"
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 28
+    MemorySize: 512
+    Environment:
+      Variables:
+        DATABASE_URL: !Ref DatabaseUrl
+        JWT_SECRET: !Ref JwtSecret
+        PAYSTACK_SECRET: !Ref PaystackSecret
+        FRONTEND_URL: !Ref FrontendUrl
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        ADMIN_EMAILS: !Ref AdminEmails
+        DEV_TOPUP: !Ref DevTopup
+        COMMISSION_PCT: !Ref CommissionPct
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 20
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: app.main.handler
+      Events:
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  PaystackWebhookUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhooks/paystack"
